@@ -31,25 +31,34 @@ public class Walk {
 
 	public static class TypeInfo {
 
-		public final Type inner;
-		public final Type generic;
+		public final Type type;
+		public final Type[] parameters;
 		public final Field field;
 
 		public TypeInfo(final Type target) {
 			if (target instanceof ParameterizedType) {
-				this.generic = target;
-				this.inner = ((ParameterizedType) target).getRawType();
+				this.type = ((ParameterizedType) target).getRawType();
+				parameters = ((ParameterizedType) target).getActualTypeArguments();
 			} else {
-				this.inner = target;
-				this.generic = null;
+				this.type = target;
+				this.parameters = null;
 			}
+			this.field = null;
+		}
+
+		public TypeInfo(final Type type, final Type... parameter) {
+			this.type = type;
+			this.parameters = parameter;
 			this.field = null;
 		}
 
 		public TypeInfo(final Field f) {
 			this.field = f;
-			this.inner = f.getType();
-			this.generic = f.getGenericType();
+			this.type = f.getType();
+			if (f.getGenericType() instanceof ParameterizedType)
+				this.parameters = ((ParameterizedType) f.getGenericType()).getActualTypeArguments();
+			else
+				this.parameters = null;
 		}
 	}
 
@@ -94,8 +103,20 @@ public class Walk {
 		T visitConcrete(Field field, Class<?> klass, List<Pair<Field, T>> fields);
 	}
 
-	public static <T> T walk(final Reflections reflections, final Class<?> root, final Visitor<T> visitor) {
+	public static <T> T walk(final Reflections reflections, final Type root, final Visitor<T> visitor) {
 		return implementationForType(reflections, new TypeInfo(root), visitor);
+	}
+
+	public static <T> T walk(
+			final Reflections reflections, final Type root, final Type parameter, final Visitor<T> visitor
+	) {
+		return implementationForType(reflections, new TypeInfo(root, parameter), visitor);
+	}
+
+	public static <T> T walk(
+			final Reflections reflections, final TypeInfo root, final Visitor<T> visitor
+	) {
+		return implementationForType(reflections, root, visitor);
 	}
 
 	public static List<Pair<Enum<?>, Field>> enumValues(final Class<?> enumClass) {
@@ -109,46 +130,46 @@ public class Walk {
 	private static <T> T implementationForType(
 			final Reflections reflections, final TypeInfo target, final Visitor<T> visitor
 	) {
-		if (target.inner == String.class) {
+		if (target.type == String.class) {
 			return visitor.visitString(target.field);
-		} else if ((target.inner == int.class) || (target.inner == Integer.class)) {
+		} else if ((target.type == int.class) || (target.type == Integer.class)) {
 			return visitor.visitInteger(target.field);
-		} else if ((target.inner == double.class) || (target.inner == Double.class)) {
+		} else if ((target.type == double.class) || (target.type == Double.class)) {
 			return visitor.visitDouble(target.field);
-		} else if ((target.inner == boolean.class) || (target.inner == Boolean.class)) {
+		} else if ((target.type == boolean.class) || (target.type == Boolean.class)) {
 			return visitor.visitBoolean(target.field);
-		} else if (((Class<?>) target.inner).isEnum()) {
-			return visitor.visitEnum(target.field, (Class<?>) target.inner);
-		} else if (List.class.isAssignableFrom((Class<?>) target.inner)) {
-			if (target.generic == null)
+		} else if (((Class<?>) target.type).isEnum()) {
+			return visitor.visitEnum(target.field, (Class<?>) target.type);
+		} else if (List.class.isAssignableFrom((Class<?>) target.type)) {
+			if (target.parameters == null)
 				throw new AssertionError("Unparameterized list!");
-			final Type innerType = ((ParameterizedType) target.generic).getActualTypeArguments()[0];
+			final Type innerType = target.parameters[0];
 			return visitor.visitList(target.field,
 					implementationForType(reflections, new TypeInfo(innerType), visitor)
 			);
-		} else if (java.util.Set.class.isAssignableFrom((Class<?>) target.inner)) {
-			if (target.generic == null)
+		} else if (java.util.Set.class.isAssignableFrom((Class<?>) target.type)) {
+			if (target.parameters == null)
 				throw new AssertionError("Unparameterized set!");
-			final Type innerType = ((ParameterizedType) target.generic).getActualTypeArguments()[0];
+			final Type innerType = target.parameters[0];
 			return visitor.visitSet(target.field, implementationForType(reflections, new TypeInfo(innerType), visitor));
-		} else if (Map.class.isAssignableFrom((Class<?>) target.inner)) {
-			if (target.generic == null)
+		} else if (Map.class.isAssignableFrom((Class<?>) target.type)) {
+			if (target.parameters == null)
 				throw new AssertionError("Unparameterized map!");
-			if (((ParameterizedType) target.generic).getActualTypeArguments()[0] != String.class)
+			if (target.parameters[0] != String.class)
 				throw new AssertionError("Configurable maps must have String keys.");
-			final Type innerType = ((ParameterizedType) target.generic).getActualTypeArguments()[1];
+			final Type innerType = target.parameters[1];
 			return visitor.visitMap(target.field, implementationForType(reflections, new TypeInfo(innerType), visitor));
-		} else if (((Class<?>) target.inner).getAnnotation(Configuration.class) != null) {
-			if (((Class<?>) target.inner).isInterface() ||
-					Modifier.isAbstract(((Class<?>) target.inner).getModifiers())) {
-				final T out = visitor.visitAbstractShort(target.field, (Class<?>) target.inner);
+		} else if (((Class<?>) target.type).getAnnotation(Configuration.class) != null) {
+			if (((Class<?>) target.type).isInterface() ||
+					Modifier.isAbstract(((Class<?>) target.type).getModifiers())) {
+				final T out = visitor.visitAbstractShort(target.field, (Class<?>) target.type);
 				if (out != null)
 					return out;
 				final java.util.Set<String> subclassNames = new HashSet<>();
 				return visitor.visitAbstract(target.field,
-						(Class<?>) target.inner,
+						(Class<?>) target.type,
 						Sets
-								.difference(reflections.getSubTypesOf((Class<?>) target.inner), ImmutableSet.of(target))
+								.difference(reflections.getSubTypesOf((Class<?>) target.type), ImmutableSet.of(target))
 								.stream()
 								.map(s -> (Class<?>) s)
 								.filter(s -> !Modifier.isAbstract(s.getModifiers()))
@@ -158,7 +179,7 @@ public class Walk {
 										throw new IllegalArgumentException(String.format(
 												"Specific type [%s] of polymorphic type [%s] is ambiguous.",
 												name,
-												target.inner
+												target.type
 										));
 									subclassNames.add(name);
 									return new Pair<Class<?>, T>(s,
@@ -170,18 +191,18 @@ public class Walk {
 			} else {
 				final Constructor<?> constructor;
 				try {
-					constructor = ((Class<?>) target.inner).getConstructor();
+					constructor = ((Class<?>) target.type).getConstructor();
 				} catch (final NoSuchMethodException e) {
 					throw new AssertionError(String.format(
 							"Class [%s] of field marked for serialization has no nullary constructor or constructor is not public.",
-							target.inner
+							target.type
 					));
 				}
-				final T out = visitor.visitConcreteShort(target.field, (Class<?>) target.inner);
+				final T out = visitor.visitConcreteShort(target.field, (Class<?>) target.type);
 				if (out != null)
 					return out;
 				final java.util.Set<Field> fields = new HashSet<>();
-				Class<?> level = (Class<?>) target.inner;
+				Class<?> level = (Class<?>) target.type;
 				while (level.getSuperclass() != null) {
 					stream(level.getDeclaredFields())
 							.filter(f -> f.getAnnotation(Configuration.class) != null)
@@ -194,11 +215,11 @@ public class Walk {
 							});
 					level = level.getSuperclass();
 				}
-				return visitor.visitConcrete(target.field, (Class<?>) target.inner, fields.stream().map(f -> {
+				return visitor.visitConcrete(target.field, (Class<?>) target.type, fields.stream().map(f -> {
 					return new Pair<>(f, implementationForType(reflections, new TypeInfo(f), visitor));
 				}).collect(Collectors.toList()));
 			}
 		}
-		throw new AssertionError(String.format("Unconfigurable field of type or derived type [%s]", target.inner));
+		throw new AssertionError(String.format("Unconfigurable field of type or derived type [%s]", target.type));
 	}
 }
