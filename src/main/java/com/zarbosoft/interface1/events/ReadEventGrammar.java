@@ -3,12 +3,12 @@ package com.zarbosoft.interface1.events;
 import com.zarbosoft.interface1.Configuration;
 import com.zarbosoft.interface1.Walk;
 import com.zarbosoft.pidgoon.AbortParse;
-import com.zarbosoft.pidgoon.events.BakedOperator;
+import com.zarbosoft.pidgoon.Node;
 import com.zarbosoft.pidgoon.events.Grammar;
+import com.zarbosoft.pidgoon.events.Operator;
 import com.zarbosoft.pidgoon.events.Store;
 import com.zarbosoft.pidgoon.events.Terminal;
 import com.zarbosoft.pidgoon.internal.Helper;
-import com.zarbosoft.pidgoon.internal.Node;
 import com.zarbosoft.pidgoon.nodes.Reference;
 import com.zarbosoft.pidgoon.nodes.Repeat;
 import com.zarbosoft.pidgoon.nodes.Sequence;
@@ -31,7 +31,7 @@ public class ReadEventGrammar {
 		grammar.add("root", new Union().add(Walk.walk(reflections, root, new Walk.Visitor<Node>() {
 			@Override
 			public Node visitString(final Field field) {
-				return new BakedOperator(new Terminal(new InterfacePrimitiveEvent(null)), s -> {
+				return new Operator(new Terminal(new InterfacePrimitiveEvent(null)), s -> {
 					final InterfacePrimitiveEvent event = (InterfacePrimitiveEvent) s.top();
 					return s.pushStack(event.value);
 				});
@@ -39,7 +39,7 @@ public class ReadEventGrammar {
 
 			@Override
 			public Node visitInteger(final Field field) {
-				return new BakedOperator(new Terminal(new InterfacePrimitiveEvent(null)), s -> {
+				return new Operator(new Terminal(new InterfacePrimitiveEvent(null)), s -> {
 					final InterfacePrimitiveEvent event = (InterfacePrimitiveEvent) s.top();
 					try {
 						return s.pushStack(Integer.valueOf(event.value));
@@ -51,7 +51,7 @@ public class ReadEventGrammar {
 
 			@Override
 			public Node visitDouble(final Field field) {
-				return new BakedOperator(new Terminal(new InterfacePrimitiveEvent(null)), s -> {
+				return new Operator(new Terminal(new InterfacePrimitiveEvent(null)), s -> {
 					final InterfacePrimitiveEvent event = (InterfacePrimitiveEvent) s.top();
 					try {
 						return s.pushStack(Double.valueOf(event.value));
@@ -63,7 +63,7 @@ public class ReadEventGrammar {
 
 			@Override
 			public Node visitBoolean(final Field field) {
-				return new BakedOperator(new Terminal(new InterfacePrimitiveEvent(null)), s -> {
+				return new Operator(new Terminal(new InterfacePrimitiveEvent(null)), s -> {
 					final InterfacePrimitiveEvent event = (InterfacePrimitiveEvent) s.top();
 					if (event.value.equals("true"))
 						return s.pushStack(true);
@@ -78,7 +78,7 @@ public class ReadEventGrammar {
 			public Node visitEnum(final Field field, final Class<?> enumClass) {
 				final Union union = new Union();
 				Walk.enumValues(enumClass).forEach(pair -> {
-					union.add(new BakedOperator(new Terminal(new InterfacePrimitiveEvent(Walk.decideName(pair.second))),
+					union.add(new Operator(new Terminal(new InterfacePrimitiveEvent(Walk.decideName(pair.second))),
 							store -> store.pushStack(pair.first)
 					));
 				});
@@ -88,15 +88,15 @@ public class ReadEventGrammar {
 			@Override
 			public Node visitList(final Field field, final Node inner) {
 				return new Sequence()
-						.add(new BakedOperator(new Terminal(new InterfaceArrayOpenEvent()), s -> s.pushStack(0)))
-						.add(new Repeat(new BakedOperator(inner, s -> {
+						.add(new Operator(new Terminal(new InterfaceArrayOpenEvent()), s -> s.pushStack(0)))
+						.add(new Repeat(new Operator(inner, s -> {
 							Object temp = s.stackTop();
 							s = (Store) s.popStack();
 							Integer count = s.stackTop();
 							s = (Store) s.popStack();
 							return s.pushStack(temp).pushStack(count + 1);
 						})))
-						.add(new BakedOperator(new Terminal(new InterfaceArrayCloseEvent()), s -> {
+						.add(new Operator(new Terminal(new InterfaceArrayCloseEvent()), s -> {
 							final List out = new ArrayList();
 							s = (Store) Helper.stackPopSingleList(s, out::add);
 							Collections.reverse(out);
@@ -107,15 +107,15 @@ public class ReadEventGrammar {
 			@Override
 			public Node visitSet(final Field field, final Node inner) {
 				return new Sequence()
-						.add(new BakedOperator(new Terminal(new InterfaceArrayOpenEvent()), s -> s.pushStack(0)))
-						.add(new Repeat(new BakedOperator(inner, s -> {
+						.add(new Operator(new Terminal(new InterfaceArrayOpenEvent()), s -> s.pushStack(0)))
+						.add(new Repeat(new Operator(inner, s -> {
 							Object temp = s.stackTop();
 							s = (Store) s.popStack();
 							Integer count = s.stackTop();
 							s = (Store) s.popStack();
 							return s.pushStack(temp).pushStack(count + 1);
 						})))
-						.add(new BakedOperator(new Terminal(new InterfaceArrayCloseEvent()), s -> {
+						.add(new Operator(new Terminal(new InterfaceArrayCloseEvent()), s -> {
 							final Set out = new HashSet();
 							s = (Store) Helper.stackPopSingleList(s, (Consumer<Object>) out::add);
 							return s.pushStack(out);
@@ -125,11 +125,11 @@ public class ReadEventGrammar {
 			@Override
 			public Node visitMap(final Field field, final Node inner) {
 				return new Sequence()
-						.add(new BakedOperator(new Terminal(new InterfaceObjectOpenEvent()), s -> s.pushStack(0)))
-						.add(new Repeat(new Sequence().add(new BakedOperator(new Terminal(new InterfaceKeyEvent(null)),
+						.add(new Operator(new Terminal(new InterfaceObjectOpenEvent()), s -> s.pushStack(0)))
+						.add(new Repeat(new Sequence().add(new Operator(new Terminal(new InterfaceKeyEvent(null)),
 								store -> store.pushStack(((InterfaceKeyEvent) store.top()).value)
-						)).add(new BakedOperator(inner, Helper::stackDoubleElement))))
-						.add(new BakedOperator(new Terminal(new InterfaceObjectCloseEvent()), s -> {
+						)).add(new Operator(inner, Helper::stackDoubleElement))))
+						.add(new Operator(new Terminal(new InterfaceObjectCloseEvent()), s -> {
 							final Map out = new HashMap();
 							s = (Store) Helper.<Pair<String, Object>>stackPopSingleList(s,
 									p -> out.put(p.first, p.second)
@@ -175,10 +175,10 @@ public class ReadEventGrammar {
 				seen.add(klass);
 				final Sequence seq = new Sequence();
 				{
-					seq.add(new BakedOperator(new Terminal(new InterfaceObjectOpenEvent()), s -> s.pushStack(0)));
+					seq.add(new Operator(new Terminal(new InterfaceObjectOpenEvent()), s -> s.pushStack(0)));
 					final com.zarbosoft.pidgoon.nodes.Set set = new com.zarbosoft.pidgoon.nodes.Set();
 					fields.forEach(f -> {
-						set.add(new BakedOperator(new Sequence()
+						set.add(new Operator(new Sequence()
 								.add(new Terminal(new InterfaceKeyEvent(Walk.decideName(f.first))))
 								.add(f.second), s -> {
 							s = (Store) s.pushStack(f.first);
@@ -199,7 +199,7 @@ public class ReadEventGrammar {
 				if (minimalFields.size() == 1) {
 					final Union temp = new Union();
 					temp.add(seq);
-					temp.add(new BakedOperator(minimalFields.iterator().next().second, s -> {
+					temp.add(new Operator(minimalFields.iterator().next().second, s -> {
 						final Object value = s.stackTop();
 						s = (Store) s.popStack();
 						return s.pushStack(new Pair<>(value, minimalFields.iterator().next().first)).pushStack(1);
@@ -208,7 +208,7 @@ public class ReadEventGrammar {
 				} else {
 					topNode = seq;
 				}
-				grammar.add(klass.getTypeName(), new BakedOperator(topNode, s -> {
+				grammar.add(klass.getTypeName(), new Operator(topNode, s -> {
 					final Object out = uncheck(klass::newInstance);
 					s = (Store) Helper.<Pair<Object, Field>>stackPopSingleList(s, (pair) -> {
 						uncheck(() -> pair.second.set(out, pair.first));
@@ -217,7 +217,7 @@ public class ReadEventGrammar {
 				}));
 				return new Reference(klass.getTypeName());
 			}
-		})).add(new BakedOperator(store -> store.pushStack(null))));
+		})).add(new Operator(store -> store.pushStack(null))));
 		return grammar;
 	}
 

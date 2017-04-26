@@ -105,6 +105,17 @@ public class Walk {
 		}
 	}
 
+	private static class Context<T> {
+		public final Reflections reflections;
+		public final Visitor<T> visitor;
+		public Set<Class<?>> seen = new HashSet<>();
+
+		private Context(final Reflections reflections, final Visitor<T> visitor) {
+			this.reflections = reflections;
+			this.visitor = visitor;
+		}
+	}
+
 	public interface Visitor<T> {
 
 		T visitString(Field field);
@@ -123,24 +134,10 @@ public class Walk {
 
 		T visitMap(Field field, T inner);
 
-		/**
-		 * If this returns null, derived types will not be visited and visitAbstract will not be called.
-		 *
-		 * @param field
-		 * @param klass
-		 * @return
-		 */
 		T visitAbstractShort(Field field, Class<?> klass);
 
 		T visitAbstract(Field field, Class<?> klass, List<Pair<Class<?>, T>> derived);
 
-		/**
-		 * If this returns null, fields will not be visited and visitConcrete will not be called.
-		 *
-		 * @param field
-		 * @param klass
-		 * @return
-		 */
 		T visitConcreteShort(Field field, Class<?> klass);
 
 		T visitConcrete(Field field, Class<?> klass, List<Pair<Field, T>> fields);
@@ -188,82 +185,78 @@ public class Walk {
 	}
 
 	public static <T> T walk(final Reflections reflections, final Type root, final Visitor<T> visitor) {
-		return implementationForType(reflections, new TypeInfo(root), visitor);
+		return implementationForType(new Context<>(reflections, visitor), new TypeInfo(root));
 	}
 
 	public static <T> T walk(
 			final Reflections reflections, final Type root, final Type parameter, final Visitor<T> visitor
 	) {
-		return implementationForType(reflections, new TypeInfo(root, parameter), visitor);
+		return implementationForType(new Context<>(reflections, visitor), new TypeInfo(root, parameter));
 	}
 
 	public static <T> T walk(
 			final Reflections reflections, final TypeInfo root, final Visitor<T> visitor
 	) {
-		return implementationForType(reflections, root, visitor);
+		return implementationForType(new Context<>(reflections, visitor), root);
 	}
 
 	private static <T> T implementationForType(
-			final Reflections reflections, final TypeInfo target, final Visitor<T> visitor
+			final Context<T> context, final TypeInfo target
 	) {
 		if (target.type == String.class) {
-			return visitor.visitString(target.field);
+			return context.visitor.visitString(target.field);
 		} else if ((target.type == int.class) || (target.type == Integer.class)) {
-			return visitor.visitInteger(target.field);
+			return context.visitor.visitInteger(target.field);
 		} else if ((target.type == double.class) || (target.type == Double.class)) {
-			return visitor.visitDouble(target.field);
+			return context.visitor.visitDouble(target.field);
 		} else if ((target.type == boolean.class) || (target.type == Boolean.class)) {
-			return visitor.visitBoolean(target.field);
+			return context.visitor.visitBoolean(target.field);
 		} else if (((Class<?>) target.type).isEnum()) {
-			return visitor.visitEnum(target.field, (Class<?>) target.type);
+			return context.visitor.visitEnum(target.field, (Class<?>) target.type);
 		} else if (List.class.isAssignableFrom((Class<?>) target.type)) {
 			if (target.parameters == null)
 				throw new AssertionError("Unparameterized list!");
 			final Type innerType = target.parameters[0];
-			return visitor.visitList(target.field,
-					implementationForType(reflections, new TypeInfo(innerType), visitor)
-			);
+			return context.visitor.visitList(target.field, implementationForType(context, new TypeInfo(innerType)));
 		} else if (java.util.Set.class.isAssignableFrom((Class<?>) target.type)) {
 			if (target.parameters == null)
 				throw new AssertionError("Unparameterized set!");
 			final Type innerType = target.parameters[0];
-			return visitor.visitSet(target.field, implementationForType(reflections, new TypeInfo(innerType), visitor));
+			return context.visitor.visitSet(target.field, implementationForType(context, new TypeInfo(innerType)));
 		} else if (Map.class.isAssignableFrom((Class<?>) target.type)) {
 			if (target.parameters == null)
 				throw new AssertionError("Unparameterized map!");
 			if (target.parameters[0] != String.class)
 				throw new AssertionError("Interfacable maps must have String keys.");
 			final Type innerType = target.parameters[1];
-			return visitor.visitMap(target.field, implementationForType(reflections, new TypeInfo(innerType), visitor));
+			return context.visitor.visitMap(target.field, implementationForType(context, new TypeInfo(innerType)));
 		} else if (((Class<?>) target.type).getAnnotation(Configuration.class) != null) {
 			if (((Class<?>) target.type).isInterface() ||
 					Modifier.isAbstract(((Class<?>) target.type).getModifiers())) {
-				final T out = visitor.visitAbstractShort(target.field, (Class<?>) target.type);
-				if (out != null)
-					return out;
+				if (context.seen.contains(target.type))
+					return context.visitor.visitAbstractShort(target.field, (Class<?>) target.type);
+				context.seen.add((Class<?>) target.type);
 				final java.util.Set<String> subclassNames = new HashSet<>();
-				return visitor.visitAbstract(target.field,
-						(Class<?>) target.type,
-						Sets
-								.difference(reflections.getSubTypesOf((Class<?>) target.type), ImmutableSet.of(target))
-								.stream()
-								.map(s -> (Class<?>) s)
-								.filter(s -> !Modifier.isAbstract(s.getModifiers()))
-								.map(s -> {
-									String name = decideName(s);
-									if (subclassNames.contains(name))
-										throw new IllegalArgumentException(String.format(
-												"Specific type [%s] of polymorphic type [%s] is ambiguous.",
-												name,
-												target.type
-										));
-									subclassNames.add(name);
-									return new Pair<Class<?>, T>(s,
-											(T) implementationForType(reflections, new TypeInfo(s), visitor)
-									);
-								})
-								.collect(Collectors.toList())
-				);
+				return context.visitor.visitAbstract(target.field, (Class<?>) target.type, Sets
+						.difference(context.reflections.getSubTypesOf((Class<?>) target.type),
+								ImmutableSet.of(target)
+						)
+						.stream()
+						.map(s -> (Class<?>) s)
+						.filter(s -> !Modifier.isAbstract(s.getModifiers()))
+						.filter(s -> s.getAnnotation(Configuration.class) != null)
+						.map(s -> {
+							String name = decideName(s);
+							if (subclassNames.contains(name))
+								throw new IllegalArgumentException(String.format(
+										"Specific type [%s] of polymorphic type [%s] is ambiguous.",
+										name,
+										target.type
+								));
+							subclassNames.add(name);
+							return new Pair<Class<?>, T>(s, (T) implementationForType(context, new TypeInfo(s)));
+						})
+						.collect(Collectors.toList()));
 			} else {
 				final Constructor<?> constructor;
 				try {
@@ -274,13 +267,13 @@ public class Walk {
 							target.type
 					));
 				}
-				final T out = visitor.visitConcreteShort(target.field, (Class<?>) target.type);
-				if (out != null)
-					return out;
-				return visitor.visitConcrete(target.field,
+				if (context.seen.contains(target.type))
+					return context.visitor.visitConcreteShort(target.field, (Class<?>) target.type);
+				context.seen.add((Class<?>) target.type);
+				return context.visitor.visitConcrete(target.field,
 						(Class<?>) target.type,
 						getFields((Class<?>) target.type).map(f -> {
-							return new Pair<>(f, implementationForType(reflections, new TypeInfo(f), visitor));
+							return new Pair<>(f, implementationForType(context, new TypeInfo(f)));
 						}).collect(Collectors.toList())
 				);
 			}

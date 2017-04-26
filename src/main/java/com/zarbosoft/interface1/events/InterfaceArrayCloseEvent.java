@@ -13,6 +13,6 @@ public class InterfaceArrayCloseEvent implements InterfaceEvent {
 
 	@Override
 	public String toString() {
-		return String.format("]");
+		return String.format("ARRAY_CLOSE");
 	}
 }

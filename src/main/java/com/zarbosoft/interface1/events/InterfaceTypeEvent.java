@@ -23,6 +23,6 @@ public class InterfaceTypeEvent implements InterfaceEvent {
 
 	@Override
 	public String toString() {
-		return String.format("(%s)", value == null ? "*" : value);
+		return String.format("TYPE: %s", value == null ? "*" : value);
 	}
 }

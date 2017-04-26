@@ -7,7 +7,10 @@ import com.zarbosoft.rendaw.common.DeadCode;
 
 public class InterfaceRootPath extends InterfacePath {
 
-	public InterfaceRootPath() {
+	private final String root;
+
+	public InterfaceRootPath(final String root) {
+		this.root = root;
 	}
 
 	@Override
@@ -37,6 +40,6 @@ public class InterfaceRootPath extends InterfacePath {
 
 	@Override
 	public String toString() {
-		return "";
+		return root;
 	}
 }

@@ -22,6 +22,6 @@ public class InterfaceKeyEvent implements InterfaceEvent {
 
 	@Override
 	public String toString() {
-		return String.format("%s:", value == null ? "*" : value);
+		return String.format("KEY: %s", value == null ? "*" : value);
 	}
 }

@@ -13,6 +13,6 @@ public class InterfaceObjectCloseEvent implements InterfaceEvent {
 
 	@Override
 	public String toString() {
-		return String.format("}");
+		return String.format("OBJECT_CLOSE");
 	}
 }
