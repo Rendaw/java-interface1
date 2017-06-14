@@ -141,6 +141,10 @@ public class Walk {
 		T visitConcreteShort(Field field, Class<?> klass);
 
 		T visitConcrete(Field field, Class<?> klass, List<Pair<Field, T>> fields);
+
+		default T visitOther(final Field field, final Class<?> otherClass) {
+			throw new AssertionError(String.format("Uninterfacable field of type or derived type [%s]", otherClass));
+		}
 	}
 
 	public interface ObjectVisitor {
@@ -182,6 +186,12 @@ public class Walk {
 		void visitFieldEnd(Field field, Object value);
 
 		void visitConcreteEnd(Class<?> klass, Object value);
+
+		default void visitOther(final Object value) {
+			throw new AssertionError(String.format("Uninterfacable field of type or derived type [%s]",
+					value.getClass()
+			));
+		}
 	}
 
 	public static <T> T walk(final Reflections reflections, final Type root, final Visitor<T> visitor) {
@@ -278,7 +288,7 @@ public class Walk {
 				);
 			}
 		}
-		throw new AssertionError(String.format("Uninterfacable field of type or derived type [%s]", target.type));
+		return context.visitor.visitOther(target.field, (Class<?>) target.type);
 	}
 
 	public static void walk(final Object root, final ObjectVisitor visitor) {
@@ -352,7 +362,7 @@ public class Walk {
 				}
 			}
 		} else
-			throw new AssertionError(String.format("Uninterfacable field of type or derived type [%s]", target.type));
+			visitor.visitOther(value);
 	}
 
 	public static class DefaultVisitor<T> implements Visitor<T> {
@@ -417,6 +427,11 @@ public class Walk {
 		public T visitConcrete(
 				final Field field, final Class<?> klass, final List<Pair<Field, T>> fields
 		) {
+			return null;
+		}
+
+		@Override
+		public T visitOther(final Field field, final Class<?> otherClass) {
 			return null;
 		}
 	}

@@ -4,10 +4,7 @@ import com.zarbosoft.interface1.Configuration;
 import com.zarbosoft.interface1.Walk;
 import com.zarbosoft.pidgoon.AbortParse;
 import com.zarbosoft.pidgoon.Node;
-import com.zarbosoft.pidgoon.events.Grammar;
-import com.zarbosoft.pidgoon.events.Operator;
-import com.zarbosoft.pidgoon.events.Store;
-import com.zarbosoft.pidgoon.events.Terminal;
+import com.zarbosoft.pidgoon.events.*;
 import com.zarbosoft.pidgoon.internal.Helper;
 import com.zarbosoft.pidgoon.nodes.Reference;
 import com.zarbosoft.pidgoon.nodes.Repeat;
@@ -31,7 +28,7 @@ public class ReadEventGrammar {
 		grammar.add("root", new Union().add(Walk.walk(reflections, root, new Walk.Visitor<Node>() {
 			@Override
 			public Node visitString(final Field field) {
-				return new Operator(new Terminal(new InterfacePrimitiveEvent(null)), s -> {
+				return new Operator(new MatchingEventTerminal(new InterfacePrimitiveEvent(null)), s -> {
 					final InterfacePrimitiveEvent event = (InterfacePrimitiveEvent) s.top();
 					return s.pushStack(event.value);
 				});
@@ -39,7 +36,7 @@ public class ReadEventGrammar {
 
 			@Override
 			public Node visitInteger(final Field field) {
-				return new Operator(new Terminal(new InterfacePrimitiveEvent(null)), s -> {
+				return new Operator(new MatchingEventTerminal(new InterfacePrimitiveEvent(null)), s -> {
 					final InterfacePrimitiveEvent event = (InterfacePrimitiveEvent) s.top();
 					try {
 						return s.pushStack(Integer.valueOf(event.value));
@@ -51,7 +48,7 @@ public class ReadEventGrammar {
 
 			@Override
 			public Node visitDouble(final Field field) {
-				return new Operator(new Terminal(new InterfacePrimitiveEvent(null)), s -> {
+				return new Operator(new MatchingEventTerminal(new InterfacePrimitiveEvent(null)), s -> {
 					final InterfacePrimitiveEvent event = (InterfacePrimitiveEvent) s.top();
 					try {
 						return s.pushStack(Double.valueOf(event.value));
@@ -63,7 +60,7 @@ public class ReadEventGrammar {
 
 			@Override
 			public Node visitBoolean(final Field field) {
-				return new Operator(new Terminal(new InterfacePrimitiveEvent(null)), s -> {
+				return new Operator(new MatchingEventTerminal(new InterfacePrimitiveEvent(null)), s -> {
 					final InterfacePrimitiveEvent event = (InterfacePrimitiveEvent) s.top();
 					if (event.value.equals("true"))
 						return s.pushStack(true);
@@ -78,7 +75,7 @@ public class ReadEventGrammar {
 			public Node visitEnum(final Field field, final Class<?> enumClass) {
 				final Union union = new Union();
 				Walk.enumValues(enumClass).forEach(pair -> {
-					union.add(new Operator(new Terminal(new InterfacePrimitiveEvent(Walk.decideName(pair.second))),
+					union.add(new Operator(new MatchingEventTerminal(new InterfacePrimitiveEvent(Walk.decideName(pair.second))),
 							store -> store.pushStack(pair.first)
 					));
 				});
@@ -88,7 +85,9 @@ public class ReadEventGrammar {
 			@Override
 			public Node visitList(final Field field, final Node inner) {
 				return new Sequence()
-						.add(new Operator(new Terminal(new InterfaceArrayOpenEvent()), s -> s.pushStack(0)))
+						.add(new Operator(new MatchingEventTerminal(new InterfaceArrayOpenEvent()),
+								s -> s.pushStack(0)
+						))
 						.add(new Repeat(new Operator(inner, s -> {
 							Object temp = s.stackTop();
 							s = (Store) s.popStack();
@@ -96,7 +95,7 @@ public class ReadEventGrammar {
 							s = (Store) s.popStack();
 							return s.pushStack(temp).pushStack(count + 1);
 						})))
-						.add(new Operator(new Terminal(new InterfaceArrayCloseEvent()), s -> {
+						.add(new Operator(new MatchingEventTerminal(new InterfaceArrayCloseEvent()), s -> {
 							final List out = new ArrayList();
 							s = (Store) Helper.stackPopSingleList(s, out::add);
 							Collections.reverse(out);
@@ -107,7 +106,9 @@ public class ReadEventGrammar {
 			@Override
 			public Node visitSet(final Field field, final Node inner) {
 				return new Sequence()
-						.add(new Operator(new Terminal(new InterfaceArrayOpenEvent()), s -> s.pushStack(0)))
+						.add(new Operator(new MatchingEventTerminal(new InterfaceArrayOpenEvent()),
+								s -> s.pushStack(0)
+						))
 						.add(new Repeat(new Operator(inner, s -> {
 							Object temp = s.stackTop();
 							s = (Store) s.popStack();
@@ -115,7 +116,7 @@ public class ReadEventGrammar {
 							s = (Store) s.popStack();
 							return s.pushStack(temp).pushStack(count + 1);
 						})))
-						.add(new Operator(new Terminal(new InterfaceArrayCloseEvent()), s -> {
+						.add(new Operator(new MatchingEventTerminal(new InterfaceArrayCloseEvent()), s -> {
 							final Set out = new HashSet();
 							s = (Store) Helper.stackPopSingleList(s, (Consumer<Object>) out::add);
 							return s.pushStack(out);
@@ -125,11 +126,15 @@ public class ReadEventGrammar {
 			@Override
 			public Node visitMap(final Field field, final Node inner) {
 				return new Sequence()
-						.add(new Operator(new Terminal(new InterfaceObjectOpenEvent()), s -> s.pushStack(0)))
-						.add(new Repeat(new Sequence().add(new Operator(new Terminal(new InterfaceKeyEvent(null)),
-								store -> store.pushStack(((InterfaceKeyEvent) store.top()).value)
-						)).add(new Operator(inner, Helper::stackDoubleElement))))
-						.add(new Operator(new Terminal(new InterfaceObjectCloseEvent()), s -> {
+						.add(new Operator(new MatchingEventTerminal(new InterfaceObjectOpenEvent()),
+								s -> s.pushStack(0)
+						))
+						.add(new Repeat(new Sequence()
+								.add(new Operator(new MatchingEventTerminal(new InterfaceKeyEvent(null)),
+										store -> store.pushStack(((InterfaceKeyEvent) store.top()).value)
+								))
+								.add(new Operator(inner, Helper::stackDoubleElement))))
+						.add(new Operator(new MatchingEventTerminal(new InterfaceObjectCloseEvent()), s -> {
 							final Map out = new HashMap();
 							s = (Store) Helper.<Pair<String, Object>>stackPopSingleList(s,
 									p -> out.put(p.first, p.second)
@@ -154,7 +159,9 @@ public class ReadEventGrammar {
 				final Union out = new Union();
 				derived.stream().forEach(s -> {
 					out.add(new Sequence()
-							.add(new Terminal(new InterfaceTypeEvent(Walk.decideName(s.first).toLowerCase())))
+							.add(new MatchingEventTerminal(new InterfaceTypeEvent(Walk
+									.decideName(s.first)
+									.toLowerCase())))
 							.add(s.second));
 				});
 				grammar.add(klass.getTypeName(), out);
@@ -175,18 +182,20 @@ public class ReadEventGrammar {
 				seen.add(klass);
 				final Sequence seq = new Sequence();
 				{
-					seq.add(new Operator(new Terminal(new InterfaceObjectOpenEvent()), s -> s.pushStack(0)));
+					seq.add(new Operator(new MatchingEventTerminal(new InterfaceObjectOpenEvent()),
+							s -> s.pushStack(0)
+					));
 					final com.zarbosoft.pidgoon.nodes.Set set = new com.zarbosoft.pidgoon.nodes.Set();
 					fields.forEach(f -> {
 						set.add(new Operator(new Sequence()
-								.add(new Terminal(new InterfaceKeyEvent(Walk.decideName(f.first))))
+								.add(new MatchingEventTerminal(new InterfaceKeyEvent(Walk.decideName(f.first))))
 								.add(f.second), s -> {
 							s = (Store) s.pushStack(f.first);
 							return Helper.stackDoubleElement(s);
 						}), fieldIsRequired(f.first));
 					});
 					seq.add(set);
-					seq.add(new Terminal(new InterfaceObjectCloseEvent()));
+					seq.add(new MatchingEventTerminal(new InterfaceObjectCloseEvent()));
 				}
 				final Node topNode;
 				final List<Pair<Field, Node>> minimalFields2 =
@@ -216,6 +225,20 @@ public class ReadEventGrammar {
 					return s.pushStack(out);
 				}));
 				return new Reference(klass.getTypeName());
+			}
+
+			@Override
+			public Node visitOther(final Field field, final Class<?> otherClass) {
+				return new Operator(new MatchingEventTerminal(new MatchingEvent() {
+					@Override
+					public boolean matches(final MatchingEvent event) {
+						return event instanceof InterfaceOtherEvent &&
+								otherClass.isAssignableFrom(((InterfaceOtherEvent) event).value.getClass());
+					}
+				}), s -> {
+					final InterfaceOtherEvent event = (InterfaceOtherEvent) s.top();
+					return s.pushStack(event.value);
+				});
 			}
 		})).add(new Operator(store -> store.pushStack(null))));
 		return grammar;

@@ -31,6 +31,8 @@ public abstract class InterfacePath {
 			return type();
 		} else if (e.getClass() == InterfacePrimitiveEvent.class) {
 			return value();
+		} else if (e.getClass() == InterfaceOtherEvent.class) {
+			return value();
 		} else
 			throw new AssertionError(String.format("Unknown luxem event type [%s]", e.getClass()));
 	}

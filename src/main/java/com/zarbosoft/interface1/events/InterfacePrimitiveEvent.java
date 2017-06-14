@@ -1,7 +1,7 @@
 package com.zarbosoft.interface1.events;
 
 import com.zarbosoft.interface1.Configuration;
-import com.zarbosoft.pidgoon.events.Event;
+import com.zarbosoft.pidgoon.events.MatchingEvent;
 
 @Configuration(name = "primitive")
 public class InterfacePrimitiveEvent implements InterfaceEvent {
@@ -16,7 +16,7 @@ public class InterfacePrimitiveEvent implements InterfaceEvent {
 	public String value;
 
 	@Override
-	public boolean matches(final Event event) {
+	public boolean matches(final MatchingEvent event) {
 		return event.getClass() == getClass() &&
 				(value == null || value.equals(((InterfacePrimitiveEvent) event).value));
 	}
