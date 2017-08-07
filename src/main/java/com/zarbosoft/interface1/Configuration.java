@@ -8,6 +8,4 @@ public @interface Configuration {
 	String name() default "";
 
 	boolean optional() default false;
-
-	String description() default "";
 }

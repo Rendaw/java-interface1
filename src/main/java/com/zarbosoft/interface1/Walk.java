@@ -33,16 +33,6 @@ public class Walk {
 		return decideName(uncheck(() -> value.getClass().getField(value.name())));
 	}
 
-	public static String describe(final Class<?> klass) {
-		final Configuration annotation = klass.getAnnotation(Configuration.class);
-		return annotation.description();
-	}
-
-	public static String describe(final Field field) {
-		final Configuration annotation = field.getAnnotation(Configuration.class);
-		return annotation.description();
-	}
-
 	public static boolean required(final Field field) {
 		final Configuration annotation = field.getAnnotation(Configuration.class);
 		return !annotation.optional();
@@ -250,34 +240,26 @@ public class Walk {
 			if (((Class<?>) target.type).isInterface() ||
 					Modifier.isAbstract(((Class<?>) target.type).getModifiers())) {
 				final java.util.Set<String> subclassNames = new HashSet<>();
-				return context.visitor.visitAbstract(
-						target.field,
-						(Class<?>) target.type,
-						Sets
-								.difference(
-										context.reflections.getSubTypesOf((Class<?>) target.type),
-										ImmutableSet.of(target)
-								)
-								.stream()
-								.map(s -> (Class<?>) s)
-								.filter(s -> !Modifier.isAbstract(s.getModifiers()))
-								.filter(s -> s.getAnnotation(Configuration.class) != null)
-								.map(s -> {
-									String name = decideName(s);
-									if (subclassNames.contains(name))
-										throw new IllegalArgumentException(String.format(
-												"Specific type [%s] of polymorphic type [%s] is ambiguous.",
-												name,
-												target.type
-										));
-									subclassNames.add(name);
-									return new Pair<Class<?>, T>(
-											s,
-											(T) implementationForType(context, new TypeInfo(s))
-									);
-								})
-								.collect(Collectors.toList())
-				);
+				return context.visitor.visitAbstract(target.field, (Class<?>) target.type, Sets
+						.difference(context.reflections.getSubTypesOf((Class<?>) target.type),
+								ImmutableSet.of(target)
+						)
+						.stream()
+						.map(s -> (Class<?>) s)
+						.filter(s -> !Modifier.isAbstract(s.getModifiers()))
+						.filter(s -> s.getAnnotation(Configuration.class) != null)
+						.map(s -> {
+							String name = decideName(s);
+							if (subclassNames.contains(name))
+								throw new IllegalArgumentException(String.format(
+										"Specific type [%s] of polymorphic type [%s] is ambiguous.",
+										name,
+										target.type
+								));
+							subclassNames.add(name);
+							return new Pair<Class<?>, T>(s, (T) implementationForType(context, new TypeInfo(s)));
+						})
+						.collect(Collectors.toList()));
 			} else {
 				final Constructor<?> constructor;
 				try {
