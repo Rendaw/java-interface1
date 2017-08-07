@@ -53,11 +53,6 @@ public class WalkTest {
 		}
 
 		@Override
-		public String visitAbstractShort(final Field field, final Class<?> klass) {
-			throw new AssertionError("Wrong callback.");
-		}
-
-		@Override
 		public String visitAbstract(
 				final Field field, final Class<?> klass, final List<Pair<Class<?>, String>> derived
 		) {
@@ -70,7 +65,7 @@ public class WalkTest {
 		}
 
 		@Override
-		public String visitConcrete(
+		public void visitConcrete(
 				final Field field, final Class<?> klass, final List<Pair<Field, String>> fields
 		) {
 			throw new AssertionError("Wrong callback.");
@@ -79,9 +74,10 @@ public class WalkTest {
 
 	@Test
 	public void testPrimitiveList() {
-		assertEquals(
-				"ok",
-				Walk.walk(new Reflections("com.zarbosoft.interface1"), List.class, String.class, new BlankVisitor() {
+		assertEquals("ok", Walk.walk(
+				new Reflections("com.zarbosoft.interface1"),
+				new Walk.TypeInfo(List.class, new Walk.TypeInfo(String.class)),
+				new BlankVisitor() {
 					@Override
 					public String visitString(final Field field) {
 						return "string";
@@ -92,7 +88,7 @@ public class WalkTest {
 						assertEquals("string", inner);
 						return "ok";
 					}
-				})
-		);
+				}
+		));
 	}
 }

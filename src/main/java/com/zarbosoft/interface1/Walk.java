@@ -33,6 +33,21 @@ public class Walk {
 		return decideName(uncheck(() -> value.getClass().getField(value.name())));
 	}
 
+	public static String describe(final Class<?> klass) {
+		final Configuration annotation = klass.getAnnotation(Configuration.class);
+		return annotation.description();
+	}
+
+	public static String describe(final Field field) {
+		final Configuration annotation = field.getAnnotation(Configuration.class);
+		return annotation.description();
+	}
+
+	public static boolean required(final Field field) {
+		final Configuration annotation = field.getAnnotation(Configuration.class);
+		return !annotation.optional();
+	}
+
 	public static List<Pair<Enum<?>, Field>> enumValues(final Class<?> enumClass) {
 		return stream(enumClass.getEnumConstants()).map(prevalue -> {
 			final Enum<?> value = (Enum<?>) prevalue;
@@ -75,13 +90,15 @@ public class Walk {
 	public static class TypeInfo {
 
 		public final Type type;
-		public final Type[] parameters;
+		public final TypeInfo[] parameters;
 		public final Field field;
 
 		public TypeInfo(final Type target) {
 			if (target instanceof ParameterizedType) {
 				this.type = ((ParameterizedType) target).getRawType();
-				parameters = ((ParameterizedType) target).getActualTypeArguments();
+				parameters = stream(((ParameterizedType) target).getActualTypeArguments())
+						.map(type1 -> new TypeInfo(type1))
+						.toArray(TypeInfo[]::new);
 			} else {
 				this.type = target;
 				this.parameters = null;
@@ -89,7 +106,7 @@ public class Walk {
 			this.field = null;
 		}
 
-		public TypeInfo(final Type type, final Type... parameter) {
+		public TypeInfo(final Type type, final TypeInfo... parameter) {
 			this.type = type;
 			this.parameters = parameter;
 			this.field = null;
@@ -99,7 +116,9 @@ public class Walk {
 			this.field = f;
 			this.type = f.getType();
 			if (f.getGenericType() instanceof ParameterizedType)
-				this.parameters = ((ParameterizedType) f.getGenericType()).getActualTypeArguments();
+				this.parameters = stream(((ParameterizedType) f.getGenericType()).getActualTypeArguments())
+						.map(type1 -> new TypeInfo(type1))
+						.toArray(TypeInfo[]::new);
 			else
 				this.parameters = null;
 		}
@@ -134,13 +153,11 @@ public class Walk {
 
 		T visitMap(Field field, T inner);
 
-		T visitAbstractShort(Field field, Class<?> klass);
-
 		T visitAbstract(Field field, Class<?> klass, List<Pair<Class<?>, T>> derived);
 
 		T visitConcreteShort(Field field, Class<?> klass);
 
-		T visitConcrete(Field field, Class<?> klass, List<Pair<Field, T>> fields);
+		void visitConcrete(Field field, Class<?> klass, List<Pair<Field, T>> fields);
 
 		default T visitOther(final Field field, final Class<?> otherClass) {
 			throw new AssertionError(String.format("Uninterfacable field of type or derived type [%s]", otherClass));
@@ -194,16 +211,6 @@ public class Walk {
 		}
 	}
 
-	public static <T> T walk(final Reflections reflections, final Type root, final Visitor<T> visitor) {
-		return implementationForType(new Context<>(reflections, visitor), new TypeInfo(root));
-	}
-
-	public static <T> T walk(
-			final Reflections reflections, final Type root, final Type parameter, final Visitor<T> visitor
-	) {
-		return implementationForType(new Context<>(reflections, visitor), new TypeInfo(root, parameter));
-	}
-
 	public static <T> T walk(
 			final Reflections reflections, final TypeInfo root, final Visitor<T> visitor
 	) {
@@ -226,47 +233,51 @@ public class Walk {
 		} else if (List.class.isAssignableFrom((Class<?>) target.type)) {
 			if (target.parameters == null)
 				throw new AssertionError("Unparameterized list!");
-			final Type innerType = target.parameters[0];
-			return context.visitor.visitList(target.field, implementationForType(context, new TypeInfo(innerType)));
+			return context.visitor.visitList(target.field, implementationForType(context, target.parameters[0]));
 		} else if (java.util.Set.class.isAssignableFrom((Class<?>) target.type)) {
 			if (target.parameters == null)
 				throw new AssertionError("Unparameterized set!");
-			final Type innerType = target.parameters[0];
-			return context.visitor.visitSet(target.field, implementationForType(context, new TypeInfo(innerType)));
+			return context.visitor.visitSet(target.field, implementationForType(context, target.parameters[0]));
 		} else if (Map.class.isAssignableFrom((Class<?>) target.type)) {
 			if (target.parameters == null)
 				throw new AssertionError("Unparameterized map!");
-			if (target.parameters[0] != String.class)
+			if (target.parameters.length != 2)
+				throw new AssertionError("Map does not have exactly 2 parameters!");
+			if (target.parameters[0].type != String.class)
 				throw new AssertionError("Interfacable maps must have String keys.");
-			final Type innerType = target.parameters[1];
-			return context.visitor.visitMap(target.field, implementationForType(context, new TypeInfo(innerType)));
+			return context.visitor.visitMap(target.field, implementationForType(context, target.parameters[1]));
 		} else if (((Class<?>) target.type).getAnnotation(Configuration.class) != null) {
 			if (((Class<?>) target.type).isInterface() ||
 					Modifier.isAbstract(((Class<?>) target.type).getModifiers())) {
-				if (context.seen.contains(target.type))
-					return context.visitor.visitAbstractShort(target.field, (Class<?>) target.type);
-				context.seen.add((Class<?>) target.type);
 				final java.util.Set<String> subclassNames = new HashSet<>();
-				return context.visitor.visitAbstract(target.field, (Class<?>) target.type, Sets
-						.difference(context.reflections.getSubTypesOf((Class<?>) target.type),
-								ImmutableSet.of(target)
-						)
-						.stream()
-						.map(s -> (Class<?>) s)
-						.filter(s -> !Modifier.isAbstract(s.getModifiers()))
-						.filter(s -> s.getAnnotation(Configuration.class) != null)
-						.map(s -> {
-							String name = decideName(s);
-							if (subclassNames.contains(name))
-								throw new IllegalArgumentException(String.format(
-										"Specific type [%s] of polymorphic type [%s] is ambiguous.",
-										name,
-										target.type
-								));
-							subclassNames.add(name);
-							return new Pair<Class<?>, T>(s, (T) implementationForType(context, new TypeInfo(s)));
-						})
-						.collect(Collectors.toList()));
+				return context.visitor.visitAbstract(
+						target.field,
+						(Class<?>) target.type,
+						Sets
+								.difference(
+										context.reflections.getSubTypesOf((Class<?>) target.type),
+										ImmutableSet.of(target)
+								)
+								.stream()
+								.map(s -> (Class<?>) s)
+								.filter(s -> !Modifier.isAbstract(s.getModifiers()))
+								.filter(s -> s.getAnnotation(Configuration.class) != null)
+								.map(s -> {
+									String name = decideName(s);
+									if (subclassNames.contains(name))
+										throw new IllegalArgumentException(String.format(
+												"Specific type [%s] of polymorphic type [%s] is ambiguous.",
+												name,
+												target.type
+										));
+									subclassNames.add(name);
+									return new Pair<Class<?>, T>(
+											s,
+											(T) implementationForType(context, new TypeInfo(s))
+									);
+								})
+								.collect(Collectors.toList())
+				);
 			} else {
 				final Constructor<?> constructor;
 				try {
@@ -277,29 +288,22 @@ public class Walk {
 							target.type
 					));
 				}
-				if (context.seen.contains(target.type))
-					return context.visitor.visitConcreteShort(target.field, (Class<?>) target.type);
-				context.seen.add((Class<?>) target.type);
-				return context.visitor.visitConcrete(target.field,
-						(Class<?>) target.type,
-						getFields((Class<?>) target.type).map(f -> {
-							return new Pair<>(f, implementationForType(context, new TypeInfo(f)));
-						}).collect(Collectors.toList())
-				);
+				if (!context.seen.contains(target.type)) {
+					context.seen.add((Class<?>) target.type);
+					context.visitor.visitConcrete(target.field,
+							(Class<?>) target.type,
+							getFields((Class<?>) target.type).map(f -> {
+								return new Pair<>(f, implementationForType(context, new TypeInfo(f)));
+							}).collect(Collectors.toList())
+					);
+				}
+				return context.visitor.visitConcreteShort(target.field, (Class<?>) target.type);
 			}
 		}
 		return context.visitor.visitOther(target.field, (Class<?>) target.type);
 	}
 
-	public static void walk(final Object root, final ObjectVisitor visitor) {
-		walk(root.getClass(), root, visitor);
-	}
-
-	public static void walk(final Class<?> rootClass, final Object root, final ObjectVisitor visitor) {
-		implementationForValue(new TypeInfo(rootClass), root, visitor);
-	}
-
-	private static void implementationForValue(final TypeInfo target, final Object value, final ObjectVisitor visitor) {
+	public static void walk(final TypeInfo target, final Object value, final ObjectVisitor visitor) {
 		if (target.type == String.class) {
 			visitor.visitString((String) value);
 		} else if ((target.type == int.class) || (target.type == Integer.class)) {
@@ -313,31 +317,28 @@ public class Walk {
 		} else if (List.class.isAssignableFrom((Class<?>) target.type)) {
 			if (target.parameters == null)
 				throw new AssertionError("Unparameterized list!");
-			final Type innerType = target.parameters[0];
 			visitor.visitListStart((List) value);
 			for (final Object subvalue : (List<?>) value) {
-				implementationForValue(new TypeInfo(innerType), subvalue, visitor);
+				walk(target.parameters[0], subvalue, visitor);
 			}
 			visitor.visitListEnd((List) value);
 		} else if (java.util.Set.class.isAssignableFrom((Class<?>) target.type)) {
 			if (target.parameters == null)
 				throw new AssertionError("Unparameterized set!");
-			final Type innerType = target.parameters[0];
 			visitor.visitSetStart((Set) value);
 			for (final Object subvalue : (Set<?>) value) {
-				implementationForValue(new TypeInfo(innerType), subvalue, visitor);
+				walk(target.parameters[0], subvalue, visitor);
 			}
 			visitor.visitSetEnd((Set) value);
 		} else if (Map.class.isAssignableFrom((Class<?>) target.type)) {
 			if (target.parameters == null)
 				throw new AssertionError("Unparameterized map!");
-			if (target.parameters[0] != String.class)
+			if (target.parameters[0].type != String.class)
 				throw new AssertionError("Interfacable maps must have String keys.");
-			final Type innerType = target.parameters[0];
 			visitor.visitMapStart((Map) value);
 			for (final Map.Entry<String, ?> subvalue : ((Map<String, ?>) value).entrySet()) {
 				visitor.visitKeyBegin(subvalue.getKey());
-				implementationForValue(new TypeInfo(target.parameters[1]), subvalue.getValue(), visitor);
+				walk(target.parameters[1], subvalue.getValue(), visitor);
 				visitor.visitKeyEnd(subvalue.getKey());
 			}
 			visitor.visitMapEnd((Map) value);
@@ -346,7 +347,7 @@ public class Walk {
 					Modifier.isAbstract(((Class<?>) target.type).getModifiers())) {
 				final boolean enter = visitor.visitAbstractBegin((Class<?>) target.type, value);
 				if (enter) {
-					implementationForValue(new TypeInfo(value.getClass()), value, visitor);
+					walk(new TypeInfo(value.getClass()), value, visitor);
 					visitor.visitAbstractEnd((Class<?>) target.type, value);
 				}
 			} else {
@@ -355,7 +356,7 @@ public class Walk {
 					getFields((Class<?>) target.type).forEach(field -> {
 						final Object subvalue = uncheck(() -> field.get(value));
 						visitor.visitFieldBegin(field, subvalue);
-						implementationForValue(new TypeInfo(field), subvalue, visitor);
+						walk(new TypeInfo(field), subvalue, visitor);
 						visitor.visitFieldEnd(field, subvalue);
 					});
 					visitor.visitConcreteEnd((Class<?>) target.type, value);
@@ -407,11 +408,6 @@ public class Walk {
 		}
 
 		@Override
-		public T visitAbstractShort(final Field field, final Class<?> klass) {
-			return null;
-		}
-
-		@Override
 		public T visitAbstract(
 				final Field field, final Class<?> klass, final List<Pair<Class<?>, T>> derived
 		) {
@@ -424,10 +420,9 @@ public class Walk {
 		}
 
 		@Override
-		public T visitConcrete(
+		public void visitConcrete(
 				final Field field, final Class<?> klass, final List<Pair<Field, T>> fields
 		) {
-			return null;
 		}
 
 		@Override

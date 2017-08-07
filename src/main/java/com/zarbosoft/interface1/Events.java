@@ -22,23 +22,6 @@ public class Events {
 		return new Parse<T>().grammar(grammar).errorHistory(5).parseMultiple(data.map(pair -> pair));
 	}
 
-	public static <T> Stream<T> parseMultiple(
-			final Reflections reflections,
-			final Type rootClass,
-			final Type rootParameter,
-			final Stream<Pair<? extends InterfaceEvent, Object>> data
-	) {
-		return parseMultiple(reflections, new Walk.TypeInfo(rootClass, rootParameter), data);
-	}
-
-	public static <T> Stream<T> parseMultiple(
-			final Reflections reflections,
-			final Class<T> rootClass,
-			final Stream<Pair<? extends InterfaceEvent, Object>> data
-	) {
-		return parseMultiple(reflections, new Walk.TypeInfo(rootClass), data);
-	}
-
 	public static <T> T parse(
 			final Reflections reflections,
 			final Walk.TypeInfo typeInfo,
@@ -47,22 +30,5 @@ public class Events {
 		final HashSet<Type> seen = new HashSet<>();
 		final Grammar grammar = ReadEventGrammar.buildGrammar(reflections, typeInfo);
 		return new Parse<T>().grammar(grammar).errorHistory(5).parse(data.map(pair -> pair));
-	}
-
-	public static <T> T parse(
-			final Reflections reflections,
-			final Type rootClass,
-			final Type rootParameter,
-			final Stream<Pair<? extends InterfaceEvent, Object>> data
-	) {
-		return parse(reflections, new Walk.TypeInfo(rootClass, rootParameter), data);
-	}
-
-	public static <T> T parse(
-			final Reflections reflections,
-			final Class<T> rootClass,
-			final Stream<Pair<? extends InterfaceEvent, Object>> data
-	) {
-		return parse(reflections, new Walk.TypeInfo(rootClass), data);
 	}
 }
