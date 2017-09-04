@@ -13,5 +13,5 @@ public @interface Configuration {
 
 	Class<?>[] exclude() default {};
 
-	Class<?> def() default Void.class;
+	Class<?> typeless() default Void.class;
 }

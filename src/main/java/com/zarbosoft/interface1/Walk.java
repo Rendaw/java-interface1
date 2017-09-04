@@ -255,9 +255,7 @@ public class Walk {
 					include = ImmutableSet.of();
 				}
 				return context.visitor.visitAbstract(target.field, (Class<?>) target.type, Sets
-						.difference(context.reflections.getSubTypesOf((Class<?>) target.type),
-								ImmutableSet.of(target)
-						)
+						.difference(context.reflections.getSubTypesOf((Class<?>) target.type), ImmutableSet.of(target))
 						.stream()
 						.map(s -> (Class<?>) s)
 						.filter(s -> exclude.isEmpty() || !exclude.contains(s))

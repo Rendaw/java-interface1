@@ -149,7 +149,7 @@ public class ReadEventGrammar {
 			) {
 				final Class<?> def;
 				if (field != null)
-					def = field.getAnnotation(Configuration.class).def();
+					def = field.getAnnotation(Configuration.class).typeless();
 				else
 					def = null;
 				final Tuple<Object> key =
