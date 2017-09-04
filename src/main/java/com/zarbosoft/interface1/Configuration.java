@@ -8,4 +8,10 @@ public @interface Configuration {
 	String name() default "";
 
 	boolean optional() default false;
+
+	Class<?>[] include() default {};
+
+	Class<?>[] exclude() default {};
+
+	Class<?> def() default Void.class;
 }

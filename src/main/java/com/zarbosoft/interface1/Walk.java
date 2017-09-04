@@ -83,7 +83,7 @@ public class Walk {
 		public final TypeInfo[] parameters;
 		public final Field field;
 
-		public TypeInfo(final Type target) {
+		private TypeInfo(final Field field, final Type target) {
 			if (target instanceof ParameterizedType) {
 				this.type = ((ParameterizedType) target).getRawType();
 				parameters = stream(((ParameterizedType) target).getActualTypeArguments())
@@ -93,7 +93,11 @@ public class Walk {
 				this.type = target;
 				this.parameters = null;
 			}
-			this.field = null;
+			this.field = field;
+		}
+
+		public TypeInfo(final Type target) {
+			this(null, target);
 		}
 
 		public TypeInfo(final Type type, final TypeInfo... parameter) {
@@ -107,7 +111,7 @@ public class Walk {
 			this.type = f.getType();
 			if (f.getGenericType() instanceof ParameterizedType)
 				this.parameters = stream(((ParameterizedType) f.getGenericType()).getActualTypeArguments())
-						.map(type1 -> new TypeInfo(type1))
+						.map(type1 -> new TypeInfo(field, type1))
 						.toArray(TypeInfo[]::new);
 			else
 				this.parameters = null;
@@ -240,12 +244,24 @@ public class Walk {
 			if (((Class<?>) target.type).isInterface() ||
 					Modifier.isAbstract(((Class<?>) target.type).getModifiers())) {
 				final java.util.Set<String> subclassNames = new HashSet<>();
+				final Set<Class<?>> exclude;
+				final Set<Class<?>> include;
+				if (target.field != null) {
+					final Configuration fieldConfig = target.field.getAnnotation(Configuration.class);
+					exclude = new HashSet<>(Arrays.asList(fieldConfig.exclude()));
+					include = new HashSet<>(Arrays.asList(fieldConfig.include()));
+				} else {
+					exclude = ImmutableSet.of();
+					include = ImmutableSet.of();
+				}
 				return context.visitor.visitAbstract(target.field, (Class<?>) target.type, Sets
 						.difference(context.reflections.getSubTypesOf((Class<?>) target.type),
 								ImmutableSet.of(target)
 						)
 						.stream()
 						.map(s -> (Class<?>) s)
+						.filter(s -> exclude.isEmpty() || !exclude.contains(s))
+						.filter(s -> include.isEmpty() || include.contains(s))
 						.filter(s -> !Modifier.isAbstract(s.getModifiers()))
 						.filter(s -> s.getAnnotation(Configuration.class) != null)
 						.map(s -> {

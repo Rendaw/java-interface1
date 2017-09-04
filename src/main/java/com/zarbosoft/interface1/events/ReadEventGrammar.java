@@ -11,6 +11,7 @@ import com.zarbosoft.pidgoon.nodes.Repeat;
 import com.zarbosoft.pidgoon.nodes.Sequence;
 import com.zarbosoft.pidgoon.nodes.Union;
 import com.zarbosoft.rendaw.common.Pair;
+import com.zarbosoft.rendaw.common.Tuple;
 import org.reflections.Reflections;
 
 import java.lang.reflect.Field;
@@ -146,13 +147,20 @@ public class ReadEventGrammar {
 			public Node visitAbstract(
 					final Field field, final Class<?> klass, final List<Pair<Class<?>, Node>> derived
 			) {
-				final Pair<Class<?>, Set<Class<?>>> key =
-						new Pair<>(klass, derived.stream().map(p -> p.first).collect(Collectors.toSet()));
+				final Class<?> def;
+				if (field != null)
+					def = field.getAnnotation(Configuration.class).def();
+				else
+					def = null;
+				final Tuple<Object> key =
+						new Tuple<>(klass, derived.stream().map(p -> p.first).collect(Collectors.toSet()), def);
 				if (!seen.contains(key)) {
 					seen.add(key);
 					final Set<String> subclassNames = new HashSet<>();
 					final Union out = new Union();
 					derived.stream().forEach(s -> {
+						if (s.first.equals(def))
+							out.add(s.second);
 						out.add(new Sequence()
 								.add(new MatchingEventTerminal(new InterfaceTypeEvent(Walk
 										.decideName(s.first)
