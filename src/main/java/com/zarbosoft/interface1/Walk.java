@@ -71,8 +71,14 @@ public class Walk {
 				.flatMap(klass2 -> stream(klass2.getDeclaredFields()))
 				.filter(f -> f.getAnnotation(Configuration.class) != null)
 				.map(f -> {
-					//if ((f.getModifiers() & Modifier.PUBLIC) == 0)
-					//	throw new AssertionError(String.format("Field %s marked for serialization is not public.", f));
+					try {
+						klass.getMethod(f.getName(), f.getType());
+					} catch (final NoSuchMethodException e) {
+						if ((f.getModifiers() & Modifier.PUBLIC) == 0)
+							throw new AssertionError(String.format("Field %s marked for serialization is not public.",
+									f
+							));
+					}
 					return f;
 				});
 	}
@@ -352,7 +358,13 @@ public class Walk {
 				final boolean enter = visitor.visitConcreteBegin((Class<?>) target.type, value);
 				if (enter) {
 					getFields((Class<?>) target.type).forEach(field -> {
-						final Object subvalue = uncheck(() -> field.get(value));
+						final Object subvalue = uncheck(() -> {
+							try {
+								return ((Class<?>) target.type).getMethod(field.getName()).invoke(value);
+							} catch (final NoSuchMethodException e) {
+								return field.get(value);
+							}
+						});
 						visitor.visitFieldBegin(field, subvalue);
 						walk(new TypeInfo(field), subvalue, visitor);
 						visitor.visitFieldEnd(field, subvalue);
