@@ -17,6 +17,7 @@ import org.reflections.Reflections;
 import java.lang.reflect.Field;
 import java.util.*;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import static com.zarbosoft.rendaw.common.Common.uncheck;
@@ -119,6 +120,7 @@ public class ReadEventGrammar {
 						.add(new Operator(new MatchingEventTerminal(new InterfaceArrayCloseEvent()), s -> {
 							final Set out = new HashSet();
 							s = (Store) Helper.stackPopSingleList(s, (Consumer<Object>) out::add);
+							System.out.format("DONE %s set: %s\n", System.identityHashCode(out), out);
 							return s.pushStack(out);
 						}));
 			}
@@ -220,8 +222,51 @@ public class ReadEventGrammar {
 				}
 				grammar.add(klass.getTypeName(), new Operator(topNode, s -> {
 					final Object out = uncheck(klass::newInstance);
+					System.out.format("CREATE %s %s\n", System.identityHashCode(out), out);
 					s = (Store) Helper.<Pair<Object, Field>>stackPopSingleList(s, (pair) -> {
-						uncheck(() -> pair.second.set(out, pair.first));
+						uncheck(() -> {
+							final Supplier<Object> get = () -> {
+								return uncheck(() -> {
+									try {
+										return out.getClass().getMethod(pair.second.getName()).invoke(out);
+									} catch (final NoSuchMethodException e) {
+										return pair.second.get(out);
+									}
+								});
+							};
+							if (pair.first instanceof Set) {
+								System.out.format("ASSIGN %s %s = %s %s\n",
+										System.identityHashCode(out),
+										pair.second.getName(),
+										System.identityHashCode(pair.first),
+										pair.first
+								);
+								final Object x = get.get();
+								System.out.format("\tWAS %s %s = %s %s\n",
+										System.identityHashCode(out),
+										pair.second.getName(),
+										System.identityHashCode(x),
+										x
+								);
+							}
+							try {
+								out
+										.getClass()
+										.getMethod(pair.second.getName(), pair.second.getType())
+										.invoke(out, pair.first);
+							} catch (final NoSuchMethodException e) {
+								pair.second.set(out, pair.first);
+							}
+							if (pair.first instanceof Set) {
+								final Object x = get.get();
+								System.out.format("\t%s %s = %s %s\n",
+										System.identityHashCode(out),
+										pair.second.getName(),
+										System.identityHashCode(x),
+										x
+								);
+							}
+						});
 					});
 					return s.pushStack(out);
 				}));

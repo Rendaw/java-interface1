@@ -71,8 +71,8 @@ public class Walk {
 				.flatMap(klass2 -> stream(klass2.getDeclaredFields()))
 				.filter(f -> f.getAnnotation(Configuration.class) != null)
 				.map(f -> {
-					if ((f.getModifiers() & Modifier.PUBLIC) == 0)
-						throw new AssertionError(String.format("Field %s marked for serialization is not public.", f));
+					//if ((f.getModifiers() & Modifier.PUBLIC) == 0)
+					//	throw new AssertionError(String.format("Field %s marked for serialization is not public.", f));
 					return f;
 				});
 	}
@@ -255,7 +255,9 @@ public class Walk {
 					include = ImmutableSet.of();
 				}
 				return context.visitor.visitAbstract(target.field, (Class<?>) target.type, Sets
-						.difference(context.reflections.getSubTypesOf((Class<?>) target.type), ImmutableSet.of(target))
+						.difference(context.reflections.getSubTypesOf((Class<?>) target.type),
+								ImmutableSet.of(target)
+						)
 						.stream()
 						.map(s -> (Class<?>) s)
 						.filter(s -> exclude.isEmpty() || !exclude.contains(s))
