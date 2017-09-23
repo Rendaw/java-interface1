@@ -2,6 +2,7 @@ package com.zarbosoft.interface1;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import com.zarbosoft.rendaw.common.ChainComparator;
 import com.zarbosoft.rendaw.common.Common;
 import com.zarbosoft.rendaw.common.Pair;
 import org.reflections.Reflections;
@@ -261,15 +262,14 @@ public class Walk {
 					include = ImmutableSet.of();
 				}
 				return context.visitor.visitAbstract(target.field, (Class<?>) target.type, Sets
-						.difference(context.reflections.getSubTypesOf((Class<?>) target.type),
-								ImmutableSet.of(target)
-						)
+						.difference(context.reflections.getSubTypesOf((Class<?>) target.type), ImmutableSet.of(target))
 						.stream()
 						.map(s -> (Class<?>) s)
 						.filter(s -> exclude.isEmpty() || !exclude.contains(s))
 						.filter(s -> include.isEmpty() || include.contains(s))
 						.filter(s -> !Modifier.isAbstract(s.getModifiers()))
 						.filter(s -> s.getAnnotation(Configuration.class) != null)
+						.sorted(new ChainComparator<Type>().lesserFirst(Type::getTypeName).build())
 						.map(s -> {
 							String name = decideName(s);
 							if (subclassNames.contains(name))
