@@ -7,7 +7,10 @@ import com.zarbosoft.rendaw.common.Common;
 import com.zarbosoft.rendaw.common.Pair;
 import org.reflections.Reflections;
 
-import java.lang.reflect.*;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -16,6 +19,12 @@ import static com.zarbosoft.rendaw.common.Common.uncheck;
 import static java.util.Arrays.stream;
 
 public class Walk {
+	/**
+	 * A helper method to determine the serialized name of an annotated field.
+	 *
+	 * @param field
+	 * @return
+	 */
 	public static String decideName(final Field field) {
 		final Configuration annotation = field.getAnnotation(Configuration.class);
 		if (annotation == null || annotation.name().equals(""))
@@ -23,6 +32,12 @@ public class Walk {
 		return annotation.name();
 	}
 
+	/**
+	 * A helper method to determine the serialized name of an annotated class.
+	 *
+	 * @param klass
+	 * @return
+	 */
 	public static String decideName(final Class<?> klass) {
 		final Configuration annotation = klass.getAnnotation(Configuration.class);
 		if (annotation == null || annotation.name().equals(""))
@@ -30,6 +45,12 @@ public class Walk {
 		return annotation.name();
 	}
 
+	/**
+	 * A helper method to determine the serialized name of an annotated enum value.
+	 *
+	 * @param value
+	 * @return
+	 */
 	public static String decideEnumName(final Enum value) {
 		return decideName(uncheck(() -> value.getClass().getField(value.name())));
 	}
@@ -84,6 +105,9 @@ public class Walk {
 				});
 	}
 
+	/**
+	 * A class that represents a complete type.
+	 */
 	public static class TypeInfo {
 
 		public final Type type;
@@ -103,16 +127,32 @@ public class Walk {
 			this.field = field;
 		}
 
+		/**
+		 * Construct a TypeInfo that represents a simple type (no generic arguments, not a field).
+		 *
+		 * @param target
+		 */
 		public TypeInfo(final Type target) {
 			this(null, target);
 		}
 
+		/**
+		 * Construct a TypeInfo that represents a generic type.
+		 *
+		 * @param type
+		 * @param parameter
+		 */
 		public TypeInfo(final Type type, final TypeInfo... parameter) {
 			this.type = type;
 			this.parameters = parameter;
 			this.field = null;
 		}
 
+		/**
+		 * Construct a TypeInfo that represents a field (including generic types).
+		 *
+		 * @param f
+		 */
 		public TypeInfo(final Field f) {
 			this.field = f;
 			this.type = f.getType();
@@ -212,6 +252,15 @@ public class Walk {
 		}
 	}
 
+	/**
+	 * Walk a type.
+	 *
+	 * @param reflections
+	 * @param root
+	 * @param visitor
+	 * @param <T>
+	 * @return
+	 */
 	public static <T> T walk(
 			final Reflections reflections, final TypeInfo root, final Visitor<T> visitor
 	) {
@@ -261,31 +310,40 @@ public class Walk {
 					exclude = ImmutableSet.of();
 					include = ImmutableSet.of();
 				}
-				return context.visitor.visitAbstract(target.field, (Class<?>) target.type, Sets
-						.difference(context.reflections.getSubTypesOf((Class<?>) target.type), ImmutableSet.of(target))
-						.stream()
-						.map(s -> (Class<?>) s)
-						.filter(s -> exclude.isEmpty() || !exclude.contains(s))
-						.filter(s -> include.isEmpty() || include.contains(s))
-						.filter(s -> !Modifier.isAbstract(s.getModifiers()))
-						.filter(s -> s.getAnnotation(Configuration.class) != null)
-						.sorted(new ChainComparator<Type>().lesserFirst(Type::getTypeName).build())
-						.map(s -> {
-							String name = decideName(s);
-							if (subclassNames.contains(name))
-								throw new IllegalArgumentException(String.format(
-										"Specific type [%s] of polymorphic type [%s] is ambiguous.",
-										name,
-										target.type
-								));
-							subclassNames.add(name);
-							return new Pair<Class<?>, T>(s, (T) implementationForType(context, new TypeInfo(s)));
-						})
-						.collect(Collectors.toList()));
+				return context.visitor.visitAbstract(
+						target.field,
+						(Class<?>) target.type,
+						Sets
+								.difference(
+										context.reflections.getSubTypesOf((Class<?>) target.type),
+										ImmutableSet.of(target)
+								)
+								.stream()
+								.map(s -> (Class<?>) s)
+								.filter(s -> exclude.isEmpty() || !exclude.contains(s))
+								.filter(s -> include.isEmpty() || include.contains(s))
+								.filter(s -> !Modifier.isAbstract(s.getModifiers()))
+								.filter(s -> s.getAnnotation(Configuration.class) != null)
+								.sorted(new ChainComparator<Type>().lesserFirst(Type::getTypeName).build())
+								.map(s -> {
+									String name = decideName(s);
+									if (subclassNames.contains(name))
+										throw new IllegalArgumentException(String.format(
+												"Specific type [%s] of polymorphic type [%s] is ambiguous.",
+												name,
+												target.type
+										));
+									subclassNames.add(name);
+									return new Pair<Class<?>, T>(
+											s,
+											(T) implementationForType(context, new TypeInfo(s))
+									);
+								})
+								.collect(Collectors.toList())
+				);
 			} else {
-				final Constructor<?> constructor;
 				try {
-					constructor = ((Class<?>) target.type).getConstructor();
+					((Class<?>) target.type).getConstructor();
 				} catch (final NoSuchMethodException e) {
 					throw new AssertionError(String.format(
 							"Interface class [%s] has no nullary constructor or constructor is not public (maybe the class isn't static).",
@@ -307,6 +365,13 @@ public class Walk {
 		return context.visitor.visitOther(target.field, (Class<?>) target.type);
 	}
 
+	/**
+	 * Walk an object.
+	 *
+	 * @param target
+	 * @param value
+	 * @param visitor
+	 */
 	public static void walk(final TypeInfo target, final Object value, final ObjectVisitor visitor) {
 		if (target.type == String.class) {
 			visitor.visitString((String) value);

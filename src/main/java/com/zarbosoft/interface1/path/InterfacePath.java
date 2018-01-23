@@ -2,6 +2,9 @@ package com.zarbosoft.interface1.path;
 
 import com.zarbosoft.interface1.events.*;
 
+/**
+ * A class to describe paths in a document describing a three of Java objects.
+ */
 public abstract class InterfacePath {
 
 	public InterfacePath parent;
